@@ -4,43 +4,53 @@ import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
-// 定义一条比赛记录包含哪些数据
+/**
+ * 比赛记录数据模型
+ * playerC 和 playerD 使用 String?，表示在单打模式下它们可以为 null
+ */
 data class MatchRecord(
     val playerA: String,
     val playerB: String,
+    val playerC: String? = null,
+    val playerD: String? = null,
     val scoreA: Int,
     val scoreB: Int,
-    val timestamp: Long // 记录比赛时间
+    val timestamp: Long
 )
 
-// 这个类负责数据的存取
-class MatchStorage(context: Context) {
-    private val sharedPreferences = context.getSharedPreferences("match_history_prefs", Context.MODE_PRIVATE)
-    private val gson = Gson()
+/**
+ * 比赛记录持久化工具类
+ */
+class MatchStorage {
 
-    // 保存一条新记录
-    fun saveMatch(record: MatchRecord) {
-        // 1. 先取出已有的历史记录
-        val historyList = getHistory().toMutableList()
-        // 2. 把新记录加到最前面
-        historyList.add(0, record)
-        // 3. 把列表转换成 JSON 字符串
-        val jsonStr = gson.toJson(historyList)
-        // 4. 保存到 SharedPreferences
-        sharedPreferences.edit().putString("history_data", jsonStr).apply()
-    }
+    companion object {
+        private const val PREFS_NAME = "match_history_prefs"
+        private const val KEY_HISTORY = "history_data"
+        private val gson = Gson()
 
-    // 读取所有历史记录
-    fun getHistory(): List<MatchRecord> {
-        // 1. 读取 JSON 字符串
-        val jsonStr = sharedPreferences.getString("history_data", null)
-        return if (jsonStr != null) {
-            // 2. 如果有数据，把它转回 List<MatchRecord>
-            val type = object : TypeToken<List<MatchRecord>>() {}.type
-            gson.fromJson(jsonStr, type)
-        } else {
-            // 3. 如果没数据，返回一个空列表
-            emptyList()
+        /**
+         * 保存完整的比赛记录列表到本地
+         */
+        fun saveMatches(context: Context, historyList: List<MatchRecord>) {
+            val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val jsonStr = gson.toJson(historyList)
+            sharedPreferences.edit().putString(KEY_HISTORY, jsonStr).apply()
+        }
+
+        /**
+         * 从本地加载所有比赛记录
+         * 如果没有记录则返回空列表
+         */
+        fun loadMatches(context: Context): List<MatchRecord> {
+            val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val jsonStr = sharedPreferences.getString(KEY_HISTORY, null)
+
+            return if (jsonStr != null) {
+                val type = object : TypeToken<List<MatchRecord>>() {}.type
+                gson.fromJson(jsonStr, type)
+            } else {
+                emptyList()
+            }
         }
     }
 }
