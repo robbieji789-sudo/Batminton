@@ -27,7 +27,6 @@ class MainActivity : AppCompatActivity() {
         setupRecyclerView()
         setupInputListeners()
 
-        // 这里就是第 26 行左右的调用点
         binding.btnSaveMatch.setOnClickListener {
             saveMatch()
         }
@@ -48,29 +47,52 @@ class MainActivity : AppCompatActivity() {
             override fun onMove(rv: RecyclerView, vh: RecyclerView.ViewHolder, t: RecyclerView.ViewHolder): Boolean = false
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                // 滑动后通过刷新来保持“露出”状态
-                adapter.notifyItemChanged(viewHolder.adapterPosition)
+                val position = viewHolder.adapterPosition
+                if (direction == ItemTouchHelper.LEFT) {
+                    // 左滑：切换滑动状态
+                    if (adapter.swipedPosition == position) {
+                        adapter.resetSwipedPosition()
+                    } else {
+                        adapter.setSwipedPosition(position)
+                    }
+                }
             }
 
             override fun onChildDraw(
                 c: Canvas, recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder,
                 dX: Float, dY: Float, actionState: Int, isCurrentlyActive: Boolean
             ) {
-                val buttonWidth = 240f
-                val translationX = if (-dX > buttonWidth) -buttonWidth else dX
-                val foregroundView = (viewHolder as HistoryAdapter.ViewHolder).binding.viewForeground
-                getDefaultUIUtil().onDraw(c, recyclerView, foregroundView, translationX, dY, actionState, isCurrentlyActive)
+                // 获取删除按钮宽度（120dp转换成像素）
+                val buttonWidth = 120 * resources.displayMetrics.density
+                val maxSwipeDistance = -buttonWidth
+
+                // 限制滑动距离
+                val translationX = if (dX < maxSwipeDistance) maxSwipeDistance else dX
+
+                // 设置前景层的平移
+                val holder = viewHolder as HistoryAdapter.ViewHolder
+                holder.binding.viewForeground.translationX = translationX
+
+                // 调用父类方法进行默认绘制
+                super.onChildDraw(c, recyclerView, viewHolder, translationX, dY, actionState, isCurrentlyActive)
             }
 
             override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
-                val foregroundView = (viewHolder as HistoryAdapter.ViewHolder).binding.viewForeground
-                getDefaultUIUtil().clearView(foregroundView)
+                // 重置前景层位置
+                val holder = viewHolder as HistoryAdapter.ViewHolder
+                holder.binding.viewForeground.translationX = 0f
+
+                // 调用父类方法
+                super.clearView(recyclerView, viewHolder)
+            }
+
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float {
+                // 当滑动超过删除按钮宽度的一半时触发onSwiped
+                return 0.5f
             }
         }
         ItemTouchHelper(itemTouchHelperCallback).attachToRecyclerView(binding.rvHistory)
     }
-
-    // --- 核心修复：确保下面这些函数存在于类中 ---
 
     private fun saveMatch() {
         val p1 = binding.etPlayerA.text.toString().trim()
@@ -79,6 +101,29 @@ class MainActivity : AppCompatActivity() {
         val p4 = binding.etPlayerD.text.toString().trim()
         val sA = binding.etScoreA.text.toString().toIntOrNull() ?: 0
         val sB = binding.etScoreB.text.toString().toIntOrNull() ?: 0
+
+        // 验证输入 - 修复的验证逻辑
+        val isSingles = p3.isEmpty() && p4.isEmpty()
+        val isDoubles = p3.isNotEmpty() && p4.isNotEmpty()
+
+        if (!isSingles && !isDoubles) {
+            // 双打时只填写了一个选手
+            Toast.makeText(this, "双打必须同时填写选手3和选手4", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 验证选手姓名不能相同
+        val players = listOf(p1, p2, p3, p4).filter { it.isNotEmpty() }
+        if (players.distinct().size != players.size) {
+            Toast.makeText(this, "选手姓名不能重复", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 验证比分合理性（可选比赛，比如不能都是0分）
+        if (sA == 0 && sB == 0) {
+            Toast.makeText(this, "比分不能都是0", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val newRecord = MatchRecord(
             playerA = p1,
@@ -101,8 +146,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun deleteMatch(position: Int) {
         if (position >= 0 && position < matchHistory.size) {
-            matchHistory.removeAt(position)
-            adapter.notifyItemRemoved(position)
+            // 使用适配器的removeItem方法
+            adapter.removeItem(position)
             MatchStorage.saveMatches(this, matchHistory)
             Toast.makeText(this, "记录已删除", Toast.LENGTH_SHORT).show()
         }
@@ -125,10 +170,30 @@ class MainActivity : AppCompatActivity() {
     private fun validateInputs() {
         val p1 = binding.etPlayerA.text.toString().trim()
         val p2 = binding.etPlayerB.text.toString().trim()
+        val p3 = binding.etPlayerC.text.toString().trim()
+        val p4 = binding.etPlayerD.text.toString().trim()
         val sA = binding.etScoreA.text.toString().trim()
         val sB = binding.etScoreB.text.toString().trim()
 
-        val isValid = p1.isNotEmpty() && p2.isNotEmpty() && sA.isNotEmpty() && sB.isNotEmpty()
+        // 修复的验证逻辑
+        val isSingles = p3.isEmpty() && p4.isEmpty()
+        val isDoubles = p3.isNotEmpty() && p4.isNotEmpty()
+
+        val isValid = when {
+            isSingles -> {
+                // 单打：只需要选手1、2和比分
+                p1.isNotEmpty() && p2.isNotEmpty() && sA.isNotEmpty() && sB.isNotEmpty()
+            }
+            isDoubles -> {
+                // 双打：需要所有4个选手和比分
+                p1.isNotEmpty() && p2.isNotEmpty() && p3.isNotEmpty() && p4.isNotEmpty() &&
+                        sA.isNotEmpty() && sB.isNotEmpty()
+            }
+            else -> {
+                // 双打只填写了一个选手的情况
+                false
+            }
+        }
 
         binding.btnSaveMatch.isEnabled = isValid
         binding.btnSaveMatch.backgroundTintList = ColorStateList.valueOf(
@@ -143,6 +208,7 @@ class MainActivity : AppCompatActivity() {
         binding.etPlayerD.text.clear()
         binding.etScoreA.text.clear()
         binding.etScoreB.text.clear()
-        binding.etScoreB.clearFocus()
+        validateInputs() // 清空后更新按钮状态
+        binding.etPlayerA.requestFocus()
     }
 }

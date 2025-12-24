@@ -12,7 +12,14 @@ class HistoryAdapter(
     private val onDeleteClick: (Int) -> Unit
 ) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
-    class ViewHolder(val binding: ItemMatchHistoryBinding) : RecyclerView.ViewHolder(binding.root)
+    // 跟踪当前滑动的position
+    private var _swipedPosition = -1
+
+    // 提供公开的只读属性
+    val swipedPosition: Int
+        get() = _swipedPosition
+
+    inner class ViewHolder(val binding: ItemMatchHistoryBinding) : RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemMatchHistoryBinding.inflate(
@@ -37,15 +44,59 @@ class HistoryAdapter(
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         holder.binding.tvDate.text = sdf.format(Date(match.timestamp))
 
-        // 真正的删除触发：点击底层红色区域的删除图标
+        // 设置删除按钮点击事件
         holder.binding.ivDelete.setOnClickListener {
-            // 使用 holder.adapterPosition 确保位置准确
             val currentPos = holder.adapterPosition
             if (currentPos != RecyclerView.NO_POSITION) {
                 onDeleteClick(currentPos)
+                resetSwipedPosition()
             }
+        }
+
+        // 根据滑动状态设置前景层的平移
+        if (position == _swipedPosition) {
+            holder.binding.viewForeground.translationX = -120f // 向左平移120dp完全露出删除区域
+        } else {
+            holder.binding.viewForeground.translationX = 0f // 恢复原位
         }
     }
 
     override fun getItemCount(): Int = matches.size
+
+    // 设置滑动状态
+    fun setSwipedPosition(position: Int) {
+        val oldPosition = _swipedPosition
+        _swipedPosition = position
+
+        // 更新UI
+        if (oldPosition != -1 && oldPosition < itemCount) {
+            notifyItemChanged(oldPosition)
+        }
+        if (position != -1 && position < itemCount) {
+            notifyItemChanged(position)
+        }
+    }
+
+    // 重置滑动状态
+    fun resetSwipedPosition() {
+        val oldPosition = _swipedPosition
+        _swipedPosition = -1
+
+        if (oldPosition != -1 && oldPosition < itemCount) {
+            notifyItemChanged(oldPosition)
+        }
+    }
+
+    // 移除项目
+    fun removeItem(position: Int) {
+        if (position >= 0 && position < matches.size) {
+            matches.removeAt(position)
+            if (_swipedPosition == position) {
+                _swipedPosition = -1
+            } else if (_swipedPosition > position) {
+                _swipedPosition--
+            }
+            notifyItemRemoved(position)
+        }
+    }
 }
