@@ -7,37 +7,41 @@ import com.example.batminton.databinding.ItemMatchHistoryBinding
 import java.text.SimpleDateFormat
 import java.util.*
 
-class HistoryAdapter(private var matches: List<MatchRecord>) :
+class HistoryAdapter(private val matches: List<MatchRecord>) :
     RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
-    // 视图持有者，持有每个列表项的 Binding 对象
     class ViewHolder(val binding: ItemMatchHistoryBinding) : RecyclerView.ViewHolder(binding.root)
 
-    // 创建新视图
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val binding = ItemMatchHistoryBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+        val binding = ItemMatchHistoryBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
         return ViewHolder(binding)
     }
 
-    // 绑定数据到视图
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val match = matches[position]
-        // 设置选手名字
-        holder.binding.tvPlayers.text = "${match.playerA} vs ${match.playerB}"
-        // 设置比分
+
+        // 核心逻辑：根据是否有选手 3 和 4 来决定显示格式
+        val isDouble = !match.playerC.isNullOrEmpty() && !match.playerD.isNullOrEmpty()
+
+        val playerText = if (isDouble) {
+            // 双打显示格式：选手1/选手3 vs 选手2/选手4
+            "${match.playerA}/${match.playerC} vs ${match.playerB}/${match.playerD}"
+        } else {
+            // 单打显示格式：选手1 vs 选手2
+            "${match.playerA} vs ${match.playerB}"
+        }
+
+        holder.binding.tvPlayers.text = playerText
         holder.binding.tvScoreResult.text = "${match.scoreA} : ${match.scoreB}"
 
-        // 格式化并设置时间
-        val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+        // 格式化时间显示
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         holder.binding.tvDate.text = sdf.format(Date(match.timestamp))
     }
 
-    // 返回列表项总数
-    override fun getItemCount() = matches.size
-
-    // 用于更新列表数据的方法
-    fun updateData(newMatches: List<MatchRecord>) {
-        matches = newMatches
-        notifyDataSetChanged() // 通知列表刷新
-    }
+    override fun getItemCount(): Int = matches.size
 }
