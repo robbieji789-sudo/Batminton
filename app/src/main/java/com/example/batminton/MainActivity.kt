@@ -1,146 +1,90 @@
 package com.example.batminton
 
-import android.content.res.ColorStateList
-import android.graphics.Color
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
-import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.batminton.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var adapter: HistoryAdapter
-    private val matchHistory = mutableListOf<MatchRecord>()
+    private lateinit var matchStorage: MatchStorage
+    private lateinit var historyAdapter: HistoryAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化 ViewBinding
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // 初始化数据存储工具
+        matchStorage = MatchStorage(this)
+
+        // 设置底部的历史记录列表
         setupRecyclerView()
-        setupInputListeners()
 
+        // 设置“保存对局”按钮的点击事件
         binding.btnSaveMatch.setOnClickListener {
-            saveMatch()
+            saveMatchClick()
         }
     }
 
+    // 配置 RecyclerView
     private fun setupRecyclerView() {
-        // 从本地存储加载数据
-        matchHistory.clear()
-        matchHistory.addAll(MatchStorage.loadMatches(this))
-
-        // 初始化适配器，传入删除回调逻辑
-        adapter = HistoryAdapter(matchHistory) { position ->
-            showDeleteConfirmDialog(position)
-        }
-
+        // 1. 获取历史数据
+        val historyData = matchStorage.getHistory()
+        // 2. 创建适配器
+        historyAdapter = HistoryAdapter(historyData)
+        // 3. 设置给 RecyclerView
         binding.rvHistory.layoutManager = LinearLayoutManager(this)
-        binding.rvHistory.adapter = adapter
-
-        // 配置滑动删除辅助工具
-        val itemTouchHelperCallback = object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT) {
-            override fun onMove(
-                recyclerView: RecyclerView,
-                viewHolder: RecyclerView.ViewHolder,
-                target: RecyclerView.ViewHolder
-            ): Boolean = false
-
-            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                // 左滑到底时直接触发确认弹窗
-                showDeleteConfirmDialog(viewHolder.adapterPosition)
-            }
-        }
-        ItemTouchHelper(itemTouchHelperCallback).attachToRecyclerView(binding.rvHistory)
+        binding.rvHistory.adapter = historyAdapter
     }
 
-    private fun setupInputListeners() {
-        val watcher = object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) = validateInputs()
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+    // 点击保存按钮后的逻辑
+    private fun saveMatchClick() {
+        // 获取输入内容
+        val playerA = binding.etPlayerA.text.toString().trim()
+        val playerB = binding.etPlayerB.text.toString().trim()
+        val scoreAStr = binding.etScoreA.text.toString().trim()
+        val scoreBStr = binding.etScoreB.text.toString().trim()
+
+        // 简单的输入校验
+        if (playerA.isEmpty() || playerB.isEmpty()) {
+            Toast.makeText(this, "请输入双方选手名字", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (scoreAStr.isEmpty() || scoreBStr.isEmpty()) {
+            Toast.makeText(this, "请输入比分", Toast.LENGTH_SHORT).show()
+            return
         }
 
-        val inputs = listOf(
-            binding.etPlayerA, binding.etPlayerB, binding.etPlayerC, binding.etPlayerD,
-            binding.etScoreA, binding.etScoreB
-        )
-        inputs.forEach { it.addTextChangedListener(watcher) }
-    }
+        // 将比分转为数字
+        val scoreA = scoreAStr.toIntOrNull() ?: 0
+        val scoreB = scoreBStr.toIntOrNull() ?: 0
 
-    private fun validateInputs() {
-        val p1 = binding.etPlayerA.text.toString().trim()
-        val p2 = binding.etPlayerB.text.toString().trim()
-        val p3 = binding.etPlayerC.text.toString().trim()
-        val p4 = binding.etPlayerD.text.toString().trim()
-        val sA = binding.etScoreA.text.toString().trim()
-        val sB = binding.etScoreB.text.toString().trim()
+        // 创建记录对象
+        val newRecord = MatchRecord(playerA, playerB, scoreA, scoreB, System.currentTimeMillis())
 
-        val hasScores = sA.isNotEmpty() && sB.isNotEmpty()
-        val isSingleValid = p1.isNotEmpty() && p2.isNotEmpty() && p3.isEmpty() && p4.isEmpty() && hasScores
-        val isDoubleValid = p1.isNotEmpty() && p2.isNotEmpty() && p3.isNotEmpty() && p4.isNotEmpty() && hasScores
+        // 1. 保存到本地
+        matchStorage.saveMatch(newRecord)
 
-        if (isSingleValid || isDoubleValid) {
-            binding.btnSaveMatch.isEnabled = true
-            binding.btnSaveMatch.backgroundTintList = ColorStateList.valueOf(Color.parseColor("#6200EE"))
-        } else {
-            binding.btnSaveMatch.isEnabled = false
-            binding.btnSaveMatch.backgroundTintList = ColorStateList.valueOf(Color.GRAY)
-        }
-    }
-
-    private fun saveMatch() {
-        val p1 = binding.etPlayerA.text.toString().trim()
-        val p2 = binding.etPlayerB.text.toString().trim()
-        val p3 = binding.etPlayerC.text.toString().trim()
-        val p4 = binding.etPlayerD.text.toString().trim()
-        val sA = binding.etScoreA.text.toString().toIntOrNull() ?: 0
-        val sB = binding.etScoreB.text.toString().toIntOrNull() ?: 0
-
-        val newRecord = MatchRecord(
-            p1, p2,
-            if (p3.isEmpty()) null else p3,
-            if (p4.isEmpty()) null else p4,
-            sA, sB, System.currentTimeMillis()
-        )
-
-        matchHistory.add(0, newRecord)
-        adapter.notifyItemInserted(0)
+        // 2. 刷新界面上的历史记录列表
+        historyAdapter.updateData(matchStorage.getHistory())
+        // 让列表滚动到最顶部显示最新记录
         binding.rvHistory.scrollToPosition(0)
-        MatchStorage.saveMatches(this, matchHistory)
 
+        // 3. 清空比分输入框，方便下一局
         binding.etScoreA.text.clear()
         binding.etScoreB.text.clear()
-        hideKeyboard()
-        Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show()
-    }
+        // 可选：清空名字输入框
+        // binding.etPlayerA.text.clear()
+        // binding.etPlayerB.text.clear()
 
-    private fun showDeleteConfirmDialog(position: Int) {
-        AlertDialog.Builder(this)
-            .setTitle("确认删除")
-            .setMessage("确定要删除这条记录吗？")
-            .setPositiveButton("删除") { _, _ ->
-                matchHistory.removeAt(position)
-                adapter.notifyItemRemoved(position)
-                MatchStorage.saveMatches(this, matchHistory)
-            }
-            .setNegativeButton("取消") { _, _ ->
-                adapter.notifyItemChanged(position) // 滑开的卡片弹回去
-            }
-            .setCancelable(false)
-            .show()
-    }
-
-    private fun hideKeyboard() {
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        Toast.makeText(this, "对局已保存！", Toast.LENGTH_SHORT).show()
+        // 隐藏键盘
+        binding.root.clearFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
         imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 }
