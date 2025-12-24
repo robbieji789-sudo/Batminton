@@ -2,67 +2,89 @@ package com.example.batminton
 
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.batminton.databinding.ActivityMainBinding
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityMainBinding
-    private lateinit var db: AppDatabase
+    private lateinit var matchStorage: MatchStorage
+    private lateinit var historyAdapter: HistoryAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化 ViewBinding
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        db = AppDatabase.getDatabase(this)
+        // 初始化数据存储工具
+        matchStorage = MatchStorage(this)
 
-        // 点击添加对局
-        binding.btnAddMatch.setOnClickListener {
-            showAddMatchDialog()
-        }
+        // 设置底部的历史记录列表
+        setupRecyclerView()
 
-        // 点击查看历史
-        binding.btnViewHistory.setOnClickListener {
-            showHistoryDialog()
-        }
-    }
-
-    // 弹窗输入比赛结果
-    private fun showAddMatchDialog() {
-        // 这里为了简单，直接通过代码生成简单的输入框
-        // 实际开发中会跳转到另一个专门的界面
-        lifecycleScope.launch {
-            val newMatch = Match(
-                playerA = "玩家1",
-                playerB = "玩家2",
-                scoreA = 21,
-                scoreB = 18,
-                date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            )
-            db.matchDao().insert(newMatch)
-            Toast.makeText(this@MainActivity, "对局已保存！", Toast.LENGTH_SHORT).show()
+        // 设置“保存对局”按钮的点击事件
+        binding.btnSaveMatch.setOnClickListener {
+            saveMatchClick()
         }
     }
 
-    // 弹窗展示历史记录
-    private fun showHistoryDialog() {
-        lifecycleScope.launch {
-            val matches = db.matchDao().getAllMatches()
-            val historyText = matches.joinToString("\n") {
-                "${it.date}: ${it.playerA} (${it.scoreA}) vs ${it.playerB} (${it.scoreB})"
-            }
+    // 配置 RecyclerView
+    private fun setupRecyclerView() {
+        // 1. 获取历史数据
+        val historyData = matchStorage.getHistory()
+        // 2. 创建适配器
+        historyAdapter = HistoryAdapter(historyData)
+        // 3. 设置给 RecyclerView
+        binding.rvHistory.layoutManager = LinearLayoutManager(this)
+        binding.rvHistory.adapter = historyAdapter
+    }
 
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("历史对局")
-                .setMessage(if(historyText.isEmpty()) "暂无数据" else historyText)
-                .setPositiveButton("确定", null)
-                .show()
+    // 点击保存按钮后的逻辑
+    private fun saveMatchClick() {
+        // 获取输入内容
+        val playerA = binding.etPlayerA.text.toString().trim()
+        val playerB = binding.etPlayerB.text.toString().trim()
+        val scoreAStr = binding.etScoreA.text.toString().trim()
+        val scoreBStr = binding.etScoreB.text.toString().trim()
+
+        // 简单的输入校验
+        if (playerA.isEmpty() || playerB.isEmpty()) {
+            Toast.makeText(this, "请输入双方选手名字", Toast.LENGTH_SHORT).show()
+            return
         }
+        if (scoreAStr.isEmpty() || scoreBStr.isEmpty()) {
+            Toast.makeText(this, "请输入比分", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // 将比分转为数字
+        val scoreA = scoreAStr.toIntOrNull() ?: 0
+        val scoreB = scoreBStr.toIntOrNull() ?: 0
+
+        // 创建记录对象
+        val newRecord = MatchRecord(playerA, playerB, scoreA, scoreB, System.currentTimeMillis())
+
+        // 1. 保存到本地
+        matchStorage.saveMatch(newRecord)
+
+        // 2. 刷新界面上的历史记录列表
+        historyAdapter.updateData(matchStorage.getHistory())
+        // 让列表滚动到最顶部显示最新记录
+        binding.rvHistory.scrollToPosition(0)
+
+        // 3. 清空比分输入框，方便下一局
+        binding.etScoreA.text.clear()
+        binding.etScoreB.text.clear()
+        // 可选：清空名字输入框
+        // binding.etPlayerA.text.clear()
+        // binding.etPlayerB.text.clear()
+
+        Toast.makeText(this, "对局已保存！", Toast.LENGTH_SHORT).show()
+        // 隐藏键盘
+        binding.root.clearFocus()
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.hideSoftInputFromWindow(binding.root.windowToken, 0)
     }
 }
