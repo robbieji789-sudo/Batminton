@@ -7,8 +7,10 @@ import com.example.batminton.databinding.ItemMatchHistoryBinding
 import java.text.SimpleDateFormat
 import java.util.*
 
-class HistoryAdapter(private val matches: List<MatchRecord>) :
-    RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
+class HistoryAdapter(
+    private val matches: MutableList<MatchRecord>,
+    private val onDeleteClick: (Int) -> Unit
+) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
 
     class ViewHolder(val binding: ItemMatchHistoryBinding) : RecyclerView.ViewHolder(binding.root)
 
@@ -24,23 +26,28 @@ class HistoryAdapter(private val matches: List<MatchRecord>) :
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val match = matches[position]
 
-        // 核心逻辑：根据是否有选手 3 和 4 来决定显示格式
+        // 1. 判断并显示单打或双打格式
         val isDouble = !match.playerC.isNullOrEmpty() && !match.playerD.isNullOrEmpty()
-
-        val playerText = if (isDouble) {
-            // 双打显示格式：选手1/选手3 vs 选手2/选手4
+        holder.binding.tvPlayers.text = if (isDouble) {
             "${match.playerA}/${match.playerC} vs ${match.playerB}/${match.playerD}"
         } else {
-            // 单打显示格式：选手1 vs 选手2
             "${match.playerA} vs ${match.playerB}"
         }
 
-        holder.binding.tvPlayers.text = playerText
+        // 2. 显示比分
         holder.binding.tvScoreResult.text = "${match.scoreA} : ${match.scoreB}"
 
-        // 格式化时间显示
+        // 3. 格式化并显示日期
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         holder.binding.tvDate.text = sdf.format(Date(match.timestamp))
+
+        // 4. 绑定删除区域点击事件（红色正方形区域）
+        holder.binding.deleteRegion.setOnClickListener {
+            val currentPos = holder.adapterPosition
+            if (currentPos != RecyclerView.NO_POSITION) {
+                onDeleteClick(currentPos)
+            }
+        }
     }
 
     override fun getItemCount(): Int = matches.size
